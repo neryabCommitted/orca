@@ -1,9 +1,15 @@
 /* eslint-disable max-lines -- Why: transcript discovery, parsing, attribution, and aggregation share one data shape pipeline. Keeping them co-located makes it easier to audit correctness when Claude usage numbers look surprising. */
-import { homedir } from 'os'
-import { join, basename } from 'path'
-import { realpath, readdir, stat } from 'fs/promises'
+import { basename } from 'path'
+import { stat } from 'fs/promises'
 import { createReadStream } from 'fs'
 import { createInterface } from 'readline'
+import {
+  canonicalizePath,
+  findContainingWorktree,
+  normalizeComparablePath
+} from '../claude-store/claude-store-paths'
+import { listClaudeTranscriptFiles } from '../claude-store/claude-store-discovery'
+import { getProcessedFileStat, scanFilesInBatches } from '../claude-store/claude-store-scan'
 import type { Repo } from '../../shared/types'
 import type {
   ClaudeUsageAttributedTurn,
@@ -43,20 +49,12 @@ type ClaudeUsageSourceRecord = {
   }
 }
 
-const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
-const CLAUDE_TRANSCRIPTS_DIR = join(homedir(), '.claude', 'transcripts')
-const FILE_SCAN_BATCH_SIZE = 4
+// Re-exported so existing claude-usage tests keep importing it from './scanner'.
+export { listClaudeTranscriptFiles }
 
 type ClaudeUsageParsedSourceTurn = ClaudeUsageParsedTurn & {
   dedupeKey: string | null
 }
-
-type ClaudeUsageWorktreeEntry = [string, ClaudeUsageWorktreeRef]
-
-const sortedWorktreeEntriesByLookup = new WeakMap<
-  Map<string, ClaudeUsageWorktreeRef>,
-  ClaudeUsageWorktreeEntry[]
->()
 
 function getDefaultProjectLabel(cwd: string | null): string {
   if (!cwd) {
@@ -67,103 +65,6 @@ function getDefaultProjectLabel(cwd: string | null): string {
     return parts.slice(-2).join('/')
   }
   return parts.at(-1) ?? cwd
-}
-
-async function canonicalizePath(pathValue: string): Promise<string> {
-  try {
-    const resolved = await realpath(pathValue)
-    return normalizeComparablePath(resolved)
-  } catch {
-    return normalizeComparablePath(pathValue)
-  }
-}
-
-function normalizeComparablePath(pathValue: string): string {
-  const normalized = pathValue.replace(/\\/g, '/')
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
-}
-
-function isContainedPath(parentPath: string, childPath: string): boolean {
-  const parent = normalizeComparablePath(parentPath).replace(/\/+$/, '')
-  const child = normalizeComparablePath(childPath).replace(/\/+$/, '')
-  return child === parent || child.startsWith(`${parent}/`)
-}
-
-function findContainingWorktree(
-  cwd: string,
-  worktreeLookup: Map<string, ClaudeUsageWorktreeRef>
-): ClaudeUsageWorktreeRef | null {
-  const normalizedCwd = normalizeComparablePath(cwd)
-  const exact = worktreeLookup.get(normalizedCwd)
-  if (exact) {
-    return exact
-  }
-
-  for (const [worktreePath, worktree] of getSortedWorktreeEntries(worktreeLookup)) {
-    if (isContainedPath(worktreePath, normalizedCwd)) {
-      return worktree
-    }
-  }
-
-  return null
-}
-
-function getSortedWorktreeEntries(
-  worktreeLookup: Map<string, ClaudeUsageWorktreeRef>
-): ClaudeUsageWorktreeEntry[] {
-  const cached = sortedWorktreeEntriesByLookup.get(worktreeLookup)
-  if (cached) {
-    return cached
-  }
-  const sorted = [...worktreeLookup.entries()].sort(
-    ([leftPath], [rightPath]) => rightPath.length - leftPath.length
-  )
-  sortedWorktreeEntriesByLookup.set(worktreeLookup, sorted)
-  return sorted
-}
-
-async function yieldToEventLoop(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0))
-}
-
-async function walkJsonlFiles(dirPath: string): Promise<string[]> {
-  const entries = await readdir(dirPath, { withFileTypes: true })
-  const files: string[] = []
-
-  for (const entry of entries) {
-    const fullPath = join(dirPath, entry.name)
-    if (entry.isDirectory()) {
-      appendDiscoveredFiles(files, await walkJsonlFiles(fullPath))
-      continue
-    }
-    if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-      files.push(fullPath)
-    }
-  }
-
-  return files
-}
-
-function appendDiscoveredFiles(target: string[], source: readonly string[]): void {
-  // Why: long-lived transcript directories can exceed V8's argument limit if
-  // child file arrays are spread into push().
-  for (const filePath of source) {
-    target.push(filePath)
-  }
-}
-
-export async function listClaudeTranscriptFiles(): Promise<string[]> {
-  const roots = [CLAUDE_PROJECTS_DIR, CLAUDE_TRANSCRIPTS_DIR]
-  const files = await Promise.all(
-    roots.map(async (root) => {
-      try {
-        return await walkJsonlFiles(root)
-      } catch {
-        return []
-      }
-    })
-  )
-  return [...new Set(files.flat())].sort()
 }
 
 export async function getProcessedFileInfo(filePath: string): Promise<ClaudeUsageProcessedFile> {
@@ -181,17 +82,6 @@ export async function getProcessedFileInfo(filePath: string): Promise<ClaudeUsag
     mtimeMs: fileStat.mtimeMs,
     size: fileStat.size,
     lineCount
-  }
-}
-
-async function getProcessedFileStat(
-  filePath: string
-): Promise<Omit<ClaudeUsageProcessedFile, 'lineCount'>> {
-  const fileStat = await stat(filePath)
-  return {
-    path: filePath,
-    mtimeMs: fileStat.mtimeMs,
-    size: fileStat.size
   }
 }
 
@@ -624,35 +514,28 @@ export async function scanClaudeUsageFiles(
   const sessionsById = new Map<string, ClaudeUsageSession>()
   const dailyByKey = new Map<string, ClaudeUsageDailyAggregate>()
 
-  for (let index = 0; index < files.length; index += FILE_SCAN_BATCH_SIZE) {
-    const batch = files.slice(index, index + FILE_SCAN_BATCH_SIZE)
-    const results = await Promise.all(
-      batch.map(async (filePath) => {
-        const fileInfo = await getProcessedFileStat(filePath)
-        const previous = previousByPath.get(filePath)
-        // Why: Claude histories can be gigabytes. Unchanged files should pay
-        // only stat cost on refresh while preserving exactly the old projection.
-        const canReuse =
-          previous &&
-          previous.mtimeMs === fileInfo.mtimeMs &&
-          previous.size === fileInfo.size &&
-          Array.isArray(previous.sessions) &&
-          Array.isArray(previous.dailyAggregates)
+  await scanFilesInBatches(
+    files,
+    async (filePath) => {
+      const fileInfo = await getProcessedFileStat(filePath)
+      const previous = previousByPath.get(filePath)
+      // Why: Claude histories can be gigabytes. Unchanged files should pay
+      // only stat cost on refresh while preserving exactly the old projection.
+      const canReuse =
+        previous &&
+        previous.mtimeMs === fileInfo.mtimeMs &&
+        previous.size === fileInfo.size &&
+        Array.isArray(previous.sessions) &&
+        Array.isArray(previous.dailyAggregates)
 
-        return canReuse ? previous : parseClaudeUsagePersistedFile(filePath, worktreeLookup)
-      })
-    )
-    for (const processed of results) {
+      return canReuse ? previous : parseClaudeUsagePersistedFile(filePath, worktreeLookup)
+    },
+    (processed) => {
       processedFiles.push(processed)
       mergeClaudeSessions(sessionsById, processed.sessions)
       mergeClaudeDailyAggregates(dailyByKey, processed.dailyAggregates)
     }
-    // Why: transcript scans run in Electron's main process. Small parallel
-    // batches cut independent file I/O without letting Settings stay blocked.
-    if (index + batch.length < files.length) {
-      await yieldToEventLoop()
-    }
-  }
+  )
 
   return {
     processedFiles,
