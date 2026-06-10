@@ -1,0 +1,137 @@
+import { basename } from 'path'
+import type {
+  SessionHistoryProjectScope,
+  SessionHistoryScopeRoot,
+  SessionMeta,
+  TranscriptModel
+} from '../../shared/session-history-types'
+import { canonicalizePath, findContainingWorktree } from '../claude-store/claude-store-paths'
+import { scanFilesInBatches } from '../claude-store/claude-store-scan'
+import {
+  createLocalClaudeStoreFsAccessor,
+  type ClaudeStoreFsAccessor
+} from './claude-store-fs-accessor'
+import { buildFallbackSessionLabel, extractSessionFileMetadata } from './claude-transcript-parser'
+import type { SessionHistoryProvider } from './session-history-provider'
+
+type CachedSessionFileMetadata = {
+  mtimeMs: number
+  size: number
+  cwd: string | null
+}
+
+export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
+  private readonly accessor: ClaudeStoreFsAccessor
+  // Why: AR-5/AR-14 — an unchanged file pays stat-only on rescan, and keys
+  // are post-realpath so symlinked store paths share one cache entry.
+  private readonly fileMetadataCache = new Map<string, CachedSessionFileMetadata>()
+
+  constructor(accessor: ClaudeStoreFsAccessor = createLocalClaudeStoreFsAccessor()) {
+    this.accessor = accessor
+  }
+
+  async listSessions(scope: SessionHistoryProjectScope): Promise<SessionMeta[]> {
+    const lookup = new Map<string, SessionHistoryScopeRoot>()
+    for (const root of scope.roots) {
+      lookup.set(await canonicalizePath(root.path), root)
+    }
+
+    let files: string[] = []
+    try {
+      files = await this.accessor.listSessionFiles()
+    } catch {
+      // Why: discovery must never throw into the caller (FR-4/NFR-5).
+      return []
+    }
+
+    const canonicalCwdByPath = new Map<string, string>()
+    const bySessionId = new Map<string, SessionMeta>()
+
+    await scanFilesInBatches(
+      files,
+      (filePath) => this.readSessionMeta(filePath, lookup, canonicalCwdByPath),
+      (meta) => {
+        if (!meta) {
+          return
+        }
+        // Why: a resumed session appears in multiple files (the scanner's
+        // mergeClaudeSessions precedent) — keep the most recent entry.
+        const existing = bySessionId.get(meta.sessionId)
+        if (!existing || meta.lastActivity > existing.lastActivity) {
+          bySessionId.set(meta.sessionId, meta)
+        }
+      }
+    )
+
+    return [...bySessionId.values()].sort((left, right) =>
+      right.lastActivity.localeCompare(left.lastActivity)
+    )
+  }
+
+  // Why: transcript parsing is Story 2.1; the typed stub keeps the provider
+  // interface complete without implementing ahead of the PR slicing.
+  async readTranscript(_sessionId: string): Promise<TranscriptModel> {
+    return { turns: [], schemaRecognized: false }
+  }
+
+  private async readSessionMeta(
+    filePath: string,
+    lookup: Map<string, SessionHistoryScopeRoot>,
+    canonicalCwdByPath: Map<string, string>
+  ): Promise<SessionMeta | null> {
+    try {
+      const cacheKey = await canonicalizePath(filePath)
+      const fileStat = await this.accessor.statFile(filePath)
+      const cached = this.fileMetadataCache.get(cacheKey)
+
+      let cwd: string | null
+      if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+        cwd = cached.cwd
+      } else {
+        const metadata = await extractSessionFileMetadata(this.accessor.readLines(filePath))
+        cwd = metadata.cwd
+        this.fileMetadataCache.set(cacheKey, {
+          mtimeMs: fileStat.mtimeMs,
+          size: fileStat.size,
+          cwd
+        })
+      }
+
+      // Why: a session with no attributable cwd never surfaces under an
+      // unrelated Project — dropped at the provider layer (FR-5/AC-3).
+      if (cwd === null) {
+        return null
+      }
+
+      let canonicalCwd = canonicalCwdByPath.get(cwd)
+      if (canonicalCwd === undefined) {
+        // Why: many sessions share few unique cwds; cache realpath work so
+        // attribution scales with unique paths (scanner memo precedent).
+        canonicalCwd = await canonicalizePath(cwd)
+        canonicalCwdByPath.set(cwd, canonicalCwd)
+      }
+      const root = findContainingWorktree(canonicalCwd, lookup)
+      if (!root) {
+        return null
+      }
+
+      const sessionId = basename(filePath, '.jsonl')
+      const lastActivity = new Date(fileStat.mtimeMs).toISOString()
+      return {
+        sessionId,
+        title: buildFallbackSessionLabel(lastActivity, sessionId),
+        titleSource: 'fallback',
+        lastActivity,
+        repoId: root.repoId,
+        worktreeId: root.worktreeId,
+        cwd,
+        // Why: the live-session registry lands in Story 1.4.
+        isLive: false
+      }
+    } catch {
+      // Why: a file deleted or torn mid-scan (live Claude churn) skips that
+      // file only — never breaks the whole listing (FR-4/NFR-3).
+      return null
+    }
+  }
+}

@@ -31,6 +31,16 @@ function appendDiscoveredFiles(target: string[], source: readonly string[]): voi
   }
 }
 
+// Why: session history reads only ~/.claude/projects — the transcripts root
+// holds non-session exports and must not surface as history entries.
+export async function listClaudeProjectSessionFiles(): Promise<string[]> {
+  try {
+    return (await walkJsonlFiles(CLAUDE_PROJECTS_DIR)).sort()
+  } catch {
+    return []
+  }
+}
+
 export async function listClaudeTranscriptFiles(): Promise<string[]> {
   const roots = [CLAUDE_PROJECTS_DIR, CLAUDE_TRANSCRIPTS_DIR]
   const files = await Promise.all(

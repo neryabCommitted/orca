@@ -82,3 +82,28 @@ describe('listClaudeTranscriptFiles', () => {
     await expect(listClaudeTranscriptFiles()).resolves.toEqual([])
   })
 })
+
+describe('listClaudeProjectSessionFiles', () => {
+  it('lists only files under the projects root, excluding transcripts', async () => {
+    const home = await makeHome()
+    const projectDir = join(home, '.claude', 'projects', '-workspace-repo-a')
+    const transcriptsDir = join(home, '.claude', 'transcripts')
+    await mkdir(projectDir, { recursive: true })
+    await mkdir(transcriptsDir, { recursive: true })
+    const sessionFile = join(projectDir, 'session-1.jsonl')
+    await writeFile(sessionFile, '{}')
+    await writeFile(join(transcriptsDir, 'ses_1.jsonl'), '{}')
+    await writeFile(join(projectDir, 'ignore.json'), '{}')
+
+    const { listClaudeProjectSessionFiles } = await loadDiscovery(home)
+    await expect(listClaudeProjectSessionFiles()).resolves.toEqual([sessionFile])
+  })
+
+  it('returns an empty array when the projects root is missing', async () => {
+    const home = await makeHome()
+    await mkdir(join(home, '.claude', 'transcripts'), { recursive: true })
+
+    const { listClaudeProjectSessionFiles } = await loadDiscovery(home)
+    await expect(listClaudeProjectSessionFiles()).resolves.toEqual([])
+  })
+})
