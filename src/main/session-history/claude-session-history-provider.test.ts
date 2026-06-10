@@ -185,6 +185,73 @@ describe('ClaudeSessionHistoryProvider.listSessions', () => {
     expect(sessions[0]).toMatchObject({ repoId: 'repo-1', worktreeId: 'wt-1' })
   })
 
+  it('keeps the live worktree when a repo-level root is a symlink alias of it', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    const alias = join(home, 'alias-feature')
+    await symlink(worktree, alias)
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'aaaa1111-0000-0000-0000-000000000011',
+      sessionLines(worktree)
+    )
+
+    const { ClaudeSessionHistoryProvider } = await loadModules(home)
+    // Builder order: live worktree roots come first and must win realpath collisions.
+    const sessions = await new ClaudeSessionHistoryProvider().listSessions(
+      scopeOf(
+        { path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' },
+        { path: alias, repoId: 'repo-1', worktreeId: null }
+      )
+    )
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]).toMatchObject({ worktreeId: 'wt-1' })
+  })
+
+  it('resolves a deleted-worktree cwd recorded through a symlinked root prefix', async () => {
+    const home = await makeHome()
+    const repoRoot = await makeWorktree(home, 'ws', 'app')
+    const linkRoot = join(home, 'link-app')
+    await symlink(repoRoot, linkRoot)
+    const deletedCwd = join(linkRoot, 'deleted-feature') // never created on disk
+    await writeSession(
+      home,
+      '-link-app-deleted-feature',
+      'bbbb1111-0000-0000-0000-000000000012',
+      sessionLines(deletedCwd)
+    )
+
+    const { ClaudeSessionHistoryProvider } = await loadModules(home)
+    const sessions = await new ClaudeSessionHistoryProvider().listSessions(
+      scopeOf({ path: linkRoot, repoId: 'repo-1', worktreeId: null })
+    )
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]).toMatchObject({ repoId: 'repo-1', worktreeId: null, cwd: deletedCwd })
+  })
+
+  it('ignores a scope root that canonicalizes to the filesystem root', async () => {
+    const home = await makeHome()
+    const rootLink = join(home, 'link-to-root')
+    await symlink('/', rootLink)
+    const elsewhere = await makeWorktree(home, 'elsewhere')
+    await writeSession(
+      home,
+      '-elsewhere',
+      'cccc1111-0000-0000-0000-000000000013',
+      sessionLines(elsewhere)
+    )
+
+    const { ClaudeSessionHistoryProvider } = await loadModules(home)
+    const sessions = await new ClaudeSessionHistoryProvider().listSessions(
+      scopeOf({ path: rootLink, repoId: 'repo-1', worktreeId: null })
+    )
+
+    expect(sessions).toEqual([])
+  })
+
   it('does not attribute a ".." traversal cwd that resolves outside the roots', async () => {
     const home = await makeHome()
     const repoA = await makeWorktree(home, 'code', 'repo-a')
@@ -325,6 +392,79 @@ describe('ClaudeSessionHistoryProvider.listSessions', () => {
     await utimes(file, new Date('2026-06-09T12:00:00Z'), new Date('2026-06-09T12:00:00Z'))
     await provider.listSessions(scope)
     expect(readLines).toHaveBeenCalledTimes(2)
+  })
+
+  it('evicts cache entries for files that vanish from the listing', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    const fileA = await writeSession(
+      home,
+      '-ws-app-feature',
+      'dddd1111-0000-0000-0000-000000000014',
+      sessionLines(worktree)
+    )
+    const fileB = await writeSession(
+      home,
+      '-ws-app-feature',
+      'eeee1111-0000-0000-0000-000000000015',
+      sessionLines(worktree)
+    )
+
+    const { ClaudeSessionHistoryProvider, createLocalClaudeStoreFsAccessor } =
+      await loadModules(home)
+    const local = createLocalClaudeStoreFsAccessor()
+    let files = [fileA, fileB]
+    const readLines = vi.fn(local.readLines)
+    const provider = new ClaudeSessionHistoryProvider({
+      ...local,
+      listSessionFiles: async () => files,
+      readLines
+    })
+    const scope = scopeOf({ path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' })
+
+    await provider.listSessions(scope)
+    expect(readLines).toHaveBeenCalledTimes(2)
+
+    // fileB drops out of the listing — its cache entry must not be pinned.
+    files = [fileA]
+    await provider.listSessions(scope)
+    expect(readLines).toHaveBeenCalledTimes(2)
+
+    // Back in the listing with unchanged mtime/size: a pinned entry would
+    // serve stale metadata here without a re-read.
+    files = [fileA, fileB]
+    await provider.listSessions(scope)
+    expect(readLines).toHaveBeenCalledTimes(3)
+  })
+
+  it('shares one cache entry across symlink-aliased store paths (AR-14)', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    const sessionId = 'ffff1111-0000-0000-0000-000000000016'
+    const file = await writeSession(home, '-ws-app-feature', sessionId, sessionLines(worktree))
+    const aliasDir = join(home, '.claude', 'projects', '-ws-app-alias')
+    await symlink(join(home, '.claude', 'projects', '-ws-app-feature'), aliasDir)
+    const aliasFile = join(aliasDir, `${sessionId}.jsonl`)
+
+    const { ClaudeSessionHistoryProvider, createLocalClaudeStoreFsAccessor } =
+      await loadModules(home)
+    const local = createLocalClaudeStoreFsAccessor()
+    const readLines = vi.fn(local.readLines)
+    const provider = new ClaudeSessionHistoryProvider({
+      ...local,
+      listSessionFiles: async () => [file, aliasFile],
+      readLines
+    })
+    const scope = scopeOf({ path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' })
+
+    const sessions = await provider.listSessions(scope)
+    expect(sessions).toHaveLength(1)
+
+    // Aliased paths share one post-realpath cache entry: a second scan pays
+    // stat-only for both listing entries.
+    const readsAfterFirstScan = readLines.mock.calls.length
+    await provider.listSessions(scope)
+    expect(readLines).toHaveBeenCalledTimes(readsAfterFirstScan)
   })
 
   it('skips a file that disappears between listing and stat', async () => {

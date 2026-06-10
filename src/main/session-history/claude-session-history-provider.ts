@@ -5,13 +5,18 @@ import type {
   SessionMeta,
   TranscriptModel
 } from '../../shared/session-history-types'
-import { canonicalizePath, findContainingWorktree } from '../claude-store/claude-store-paths'
+import {
+  canonicalizePath,
+  findContainingWorktree,
+  normalizeComparablePath
+} from '../claude-store/claude-store-paths'
 import { scanFilesInBatches } from '../claude-store/claude-store-scan'
 import {
   createLocalClaudeStoreFsAccessor,
   type ClaudeStoreFsAccessor
 } from './claude-store-fs-accessor'
 import { buildFallbackSessionLabel, extractSessionFileMetadata } from './claude-transcript-parser'
+import { isFilesystemRootPath } from './session-history-project-scope'
 import type { SessionHistoryProvider } from './session-history-provider'
 
 type CachedSessionFileMetadata = {
@@ -33,7 +38,19 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
   async listSessions(scope: SessionHistoryProjectScope): Promise<SessionMeta[]> {
     const lookup = new Map<string, SessionHistoryScopeRoot>()
     for (const root of scope.roots) {
-      lookup.set(await canonicalizePath(root.path), root)
+      // Why: key both the literal and realpath forms, first-wins — a deleted
+      // cwd canonicalizes via the literal fallback yet must match a symlinked
+      // root, and builder order (live worktrees first) must survive realpath
+      // collisions. A key resolving to the filesystem root would contain
+      // every path (isContainedPath quirk) — never registered.
+      for (const key of new Set([
+        normalizeComparablePath(root.path),
+        await canonicalizePath(root.path)
+      ])) {
+        if (!isFilesystemRootPath(key) && !lookup.has(key)) {
+          lookup.set(key, root)
+        }
+      }
     }
 
     let files: string[] = []
@@ -46,10 +63,11 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
 
     const canonicalCwdByPath = new Map<string, string>()
     const bySessionId = new Map<string, SessionMeta>()
+    const seenCacheKeys = new Set<string>()
 
     await scanFilesInBatches(
       files,
-      (filePath) => this.readSessionMeta(filePath, lookup, canonicalCwdByPath),
+      (filePath) => this.readSessionMeta(filePath, lookup, canonicalCwdByPath, seenCacheKeys),
       (meta) => {
         if (!meta) {
           return
@@ -62,6 +80,14 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
         }
       }
     )
+
+    // Why: files deleted from the store would otherwise pin their cache
+    // entries forever in a long-lived provider instance.
+    for (const key of this.fileMetadataCache.keys()) {
+      if (!seenCacheKeys.has(key)) {
+        this.fileMetadataCache.delete(key)
+      }
+    }
 
     return [...bySessionId.values()].sort((left, right) =>
       right.lastActivity.localeCompare(left.lastActivity)
@@ -77,10 +103,12 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
   private async readSessionMeta(
     filePath: string,
     lookup: Map<string, SessionHistoryScopeRoot>,
-    canonicalCwdByPath: Map<string, string>
+    canonicalCwdByPath: Map<string, string>,
+    seenCacheKeys: Set<string>
   ): Promise<SessionMeta | null> {
     try {
       const cacheKey = await canonicalizePath(filePath)
+      seenCacheKeys.add(cacheKey)
       const fileStat = await this.accessor.statFile(filePath)
       const cached = this.fileMetadataCache.get(cacheKey)
 

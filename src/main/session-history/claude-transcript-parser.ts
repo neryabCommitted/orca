@@ -26,13 +26,16 @@ export async function extractSessionFileMetadata(
 
   for await (const line of lines) {
     lineCount++
-    byteCount += Buffer.byteLength(line, 'utf-8')
+    // Why: the byte budget excludes the cap-crossing line itself — a single
+    // oversized prelude record (file-history-snapshot) must still be parsed
+    // or its session loses cwd and vanishes from history.
     if (
       lineCount > SESSION_METADATA_SCAN_MAX_LINES ||
       byteCount > SESSION_METADATA_SCAN_MAX_BYTES
     ) {
       break
     }
+    byteCount += Buffer.byteLength(line, 'utf-8')
 
     let record: unknown
     try {

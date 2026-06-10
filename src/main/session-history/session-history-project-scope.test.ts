@@ -126,6 +126,33 @@ describe('buildSessionHistoryProjectScope', () => {
     expect(wsAppRoots).toEqual([{ path: '/ws/app', repoId: 'repo-1', worktreeId: 'wt-1' }])
   })
 
+  it('drops a repo-level root claimed by two repos sharing a basename', () => {
+    const scope = buildSessionHistoryProjectScope(
+      [
+        { id: 'repo-1', path: '/code/a/app' },
+        { id: 'repo-2', path: '/code/b/app' }
+      ],
+      new Map([
+        ['repo-1', [{ worktreeId: 'wt-1', path: '/code/a/app' }]],
+        ['repo-2', [{ worktreeId: 'wt-2', path: '/code/b/app' }]]
+      ]),
+      nestedSettings
+    )
+
+    // The shared <layout>/app root cannot be attributed to either repo.
+    expect(scope.roots.filter((root) => root.path === '/ws/app')).toEqual([])
+    expect(scope.roots).toContainEqual({
+      path: '/code/a/app',
+      repoId: 'repo-1',
+      worktreeId: 'wt-1'
+    })
+    expect(scope.roots).toContainEqual({
+      path: '/code/b/app',
+      repoId: 'repo-2',
+      worktreeId: 'wt-2'
+    })
+  })
+
   it('never emits a filesystem-root scope root', () => {
     const scope = buildSessionHistoryProjectScope(
       [{ id: 'repo-1', path: '/' }],

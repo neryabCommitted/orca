@@ -126,6 +126,33 @@ describe('extractSessionFileMetadata', () => {
     })
   })
 
+  it('parses the line that crosses the byte cap before stopping', async () => {
+    const giant = JSON.stringify({
+      type: 'user',
+      cwd: '/workspace/repo-a',
+      timestamp: '2026-06-09T10:00:00.000Z',
+      padding: 'x'.repeat(SESSION_METADATA_SCAN_MAX_BYTES)
+    })
+
+    await expect(extractSessionFileMetadata(toLines([giant]))).resolves.toEqual({
+      cwd: '/workspace/repo-a',
+      firstTimestamp: '2026-06-09T10:00:00.000Z'
+    })
+  })
+
+  it('does not scan past the line that crosses the byte cap', async () => {
+    const giant = JSON.stringify({
+      type: 'file-history-snapshot',
+      padding: 'x'.repeat(SESSION_METADATA_SCAN_MAX_BYTES)
+    })
+    const lines = [giant, JSON.stringify({ type: 'user', cwd: '/workspace/repo-a' })]
+
+    await expect(extractSessionFileMetadata(toLines(lines))).resolves.toEqual({
+      cwd: null,
+      firstTimestamp: null
+    })
+  })
+
   it('stops pulling lines once both fields are found', async () => {
     async function* explodingAfterFirst(): AsyncIterable<string> {
       yield JSON.stringify({

@@ -22,7 +22,7 @@ export type SessionHistoryWorktreeInput = {
   path: string
 }
 
-function isFilesystemRootPath(path: string): boolean {
+export function isFilesystemRootPath(path: string): boolean {
   const normalized = normalizeRuntimePathForComparison(path)
   return normalized === '' || normalized === '/' || /^[a-z]:\/?$/.test(normalized)
 }
@@ -63,6 +63,11 @@ export function buildSessionHistoryProjectScope(
   // are <layout>/<repoName>/<workspace> — a repo-level root at
   // <layout>/<repoName> still contains them (FR-5). Flat layouts mix
   // workspaces of different repos in one dir, so they are not attributable.
+  // Why: two repos sharing a basename produce the same <layout>/<name> root;
+  // attributing it to either would leak sessions cross-repo (AC-3) — track
+  // the owner per path and drop roots that become ambiguous.
+  const repoRootOwnerByPath = new Map<string, string | null>()
+  const repoRootCandidates: SessionHistoryScopeRoot[] = []
   for (const repo of localRepos) {
     const repoName = getRuntimePathBasename(repo.path).replace(/\.git$/i, '')
     if (!repoName) {
@@ -72,11 +77,20 @@ export function buildSessionHistoryProjectScope(
       if (!layout.nestWorkspaces) {
         continue
       }
-      addRoot({
-        path: resolveRuntimePath(layout.path, repoName),
-        repoId: repo.id,
-        worktreeId: null
-      })
+      const path = resolveRuntimePath(layout.path, repoName)
+      const key = normalizeRuntimePathForComparison(path)
+      const owner = repoRootOwnerByPath.get(key)
+      if (owner === undefined) {
+        repoRootOwnerByPath.set(key, repo.id)
+        repoRootCandidates.push({ path, repoId: repo.id, worktreeId: null })
+      } else if (owner !== repo.id) {
+        repoRootOwnerByPath.set(key, null)
+      }
+    }
+  }
+  for (const candidate of repoRootCandidates) {
+    if (repoRootOwnerByPath.get(normalizeRuntimePathForComparison(candidate.path)) !== null) {
+      addRoot(candidate)
     }
   }
 
