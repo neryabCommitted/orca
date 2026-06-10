@@ -15,14 +15,21 @@ import {
   createLocalClaudeStoreFsAccessor,
   type ClaudeStoreFsAccessor
 } from './claude-store-fs-accessor'
-import { buildFallbackSessionLabel, extractSessionFileMetadata } from './claude-transcript-parser'
+import {
+  deriveSessionTitle,
+  extractSessionFileMetadata,
+  type SessionFileMetadata
+} from './claude-transcript-parser'
 import { isFilesystemRootPath } from './session-history-project-scope'
 import type { SessionHistoryProvider } from './session-history-provider'
 
+// Why: the cache holds the extracted (already length-capped) metadata, not a
+// composed title — the fallback tier embeds lastActivity, which is mtime-
+// derived and only changes when the cache misses anyway.
 type CachedSessionFileMetadata = {
   mtimeMs: number
   size: number
-  cwd: string | null
+  metadata: SessionFileMetadata
 }
 
 export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
@@ -112,21 +119,21 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
       const fileStat = await this.accessor.statFile(filePath)
       const cached = this.fileMetadataCache.get(cacheKey)
 
-      let cwd: string | null
+      let metadata: SessionFileMetadata
       if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
-        cwd = cached.cwd
+        metadata = cached.metadata
       } else {
-        const metadata = await extractSessionFileMetadata(this.accessor.readLines(filePath))
-        cwd = metadata.cwd
+        metadata = await extractSessionFileMetadata(this.accessor.readLines(filePath))
         this.fileMetadataCache.set(cacheKey, {
           mtimeMs: fileStat.mtimeMs,
           size: fileStat.size,
-          cwd
+          metadata
         })
       }
 
       // Why: a session with no attributable cwd never surfaces under an
       // unrelated Project — dropped at the provider layer (FR-5/AC-3).
+      const cwd = metadata.cwd
       if (cwd === null) {
         return null
       }
@@ -145,10 +152,11 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
 
       const sessionId = basename(filePath, '.jsonl')
       const lastActivity = new Date(fileStat.mtimeMs).toISOString()
+      const { title, titleSource } = deriveSessionTitle(metadata, lastActivity, sessionId)
       return {
         sessionId,
-        title: buildFallbackSessionLabel(lastActivity, sessionId),
-        titleSource: 'fallback',
+        title,
+        titleSource,
         lastActivity,
         repoId: root.repoId,
         worktreeId: root.worktreeId,

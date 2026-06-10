@@ -79,7 +79,10 @@ describe('createLocalClaudeStoreFsAccessor', () => {
     const accessor = createLocalClaudeStoreFsAccessor()
     await expect(extractSessionFileMetadata(accessor.readLines(file))).resolves.toEqual({
       cwd: '/workspace/repo-a',
-      firstTimestamp: '2026-06-09T10:00:00.000Z'
+      firstTimestamp: '2026-06-09T10:00:00.000Z',
+      customTitle: null,
+      aiTitle: null,
+      firstUserMessage: null
     })
   })
 

@@ -1,7 +1,9 @@
 // Why: provider-neutral session-history contracts (AR-11). No fs imports —
 // shared code is consumed by main and renderer typecheck targets alike.
 
-export type SessionMetaTitleSource = 'aiTitle' | 'firstMessage' | 'fallback'
+// Why: 'userRename' is required by UX-DR4 — user-renamed titles render
+// full-weight with a ✎ glyph, so the renderer must know the tier that won.
+export type SessionMetaTitleSource = 'userRename' | 'aiTitle' | 'firstMessage' | 'fallback'
 
 export type SessionMeta = {
   sessionId: string

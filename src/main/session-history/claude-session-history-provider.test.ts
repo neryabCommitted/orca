@@ -37,6 +37,10 @@ afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
+// A long first message: the capped title may keep its prefix, but the full
+// body must never appear in any SessionMeta (NFR-8).
+const SECRET_BODY = `secret body text ${'x'.repeat(500)}`
+
 function sessionLines(cwd: string | null, timestamp = '2026-06-09T10:00:00.000Z'): string {
   return [
     JSON.stringify({ type: 'mode', mode: 'default' }),
@@ -44,7 +48,7 @@ function sessionLines(cwd: string | null, timestamp = '2026-06-09T10:00:00.000Z'
     JSON.stringify({ type: 'file-history-snapshot', snapshot: {} }),
     JSON.stringify(
       cwd
-        ? { type: 'user', cwd, timestamp, message: { role: 'user', content: 'secret body text' } }
+        ? { type: 'user', cwd, timestamp, message: { role: 'user', content: SECRET_BODY } }
         : { type: 'user', timestamp }
     )
   ].join('\n')
@@ -116,11 +120,12 @@ describe('ClaudeSessionHistoryProvider.listSessions', () => {
         repoId: 'repo-1',
         worktreeId: 'wt-1',
         cwd: worktree,
-        titleSource: 'fallback',
+        titleSource: 'firstMessage',
         isLive: false
       })
       expect(session.title.length).toBeGreaterThan(0)
-      expect(JSON.stringify(session)).not.toContain('secret body text')
+      expect(session.title.length).toBeLessThanOrEqual(81)
+      expect(JSON.stringify(session)).not.toContain(SECRET_BODY)
     }
     expect(sessions[0].lastActivity).toBe('2026-06-09T10:00:00.000Z')
   })
@@ -382,16 +387,28 @@ describe('ClaudeSessionHistoryProvider.listSessions', () => {
 
     const first = await provider.listSessions(scope)
     expect(readLines).toHaveBeenCalledTimes(1)
+    expect(first[0].titleSource).toBe('firstMessage')
 
+    // The derived title survives the cache hit without a line re-read.
     const second = await provider.listSessions(scope)
     expect(readLines).toHaveBeenCalledTimes(1)
     expect(second).toEqual(first)
 
-    // A content change invalidates the cache entry.
-    await writeFile(file, sessionLines(worktree, '2026-06-09T12:00:00.000Z'))
+    // A content change invalidates the cache entry and re-derives the title.
+    await writeFile(
+      file,
+      `${sessionLines(worktree, '2026-06-09T12:00:00.000Z')}\n${JSON.stringify({
+        type: 'custom-title',
+        customTitle: 'Renamed after rewrite'
+      })}`
+    )
     await utimes(file, new Date('2026-06-09T12:00:00Z'), new Date('2026-06-09T12:00:00Z'))
-    await provider.listSessions(scope)
+    const third = await provider.listSessions(scope)
     expect(readLines).toHaveBeenCalledTimes(2)
+    expect(third[0]).toMatchObject({
+      title: 'Renamed after rewrite',
+      titleSource: 'userRename'
+    })
   })
 
   it('evicts cache entries for files that vanish from the listing', async () => {
@@ -523,6 +540,128 @@ describe('ClaudeSessionHistoryProvider.listSessions', () => {
       scopeOf({ path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' })
     )
     await expect(snapshot()).resolves.toEqual(before)
+  })
+})
+
+describe('ClaudeSessionHistoryProvider title derivation', () => {
+  function recordLines(...records: unknown[]): string {
+    return records.map((record) => JSON.stringify(record)).join('\n')
+  }
+
+  async function listOne(home: string, worktree: string) {
+    const { ClaudeSessionHistoryProvider } = await loadModules(home)
+    const sessions = await new ClaudeSessionHistoryProvider().listSessions(
+      scopeOf({ path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' })
+    )
+    expect(sessions).toHaveLength(1)
+    return sessions[0]
+  }
+
+  const TIMESTAMP = '2026-06-09T10:00:00.000Z'
+
+  it('prefers a custom-title record over every other tier (userRename)', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'aaaa2222-0000-0000-0000-000000000021',
+      recordLines(
+        {
+          type: 'user',
+          cwd: worktree,
+          timestamp: TIMESTAMP,
+          message: { role: 'user', content: 'first message' }
+        },
+        { type: 'ai-title', aiTitle: 'AI generated' },
+        { type: 'custom-title', customTitle: 'Renamed by user' }
+      )
+    )
+
+    await expect(listOne(home, worktree)).resolves.toMatchObject({
+      title: 'Renamed by user',
+      titleSource: 'userRename'
+    })
+  })
+
+  it('derives the title from the last ai-title when no rename exists', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'bbbb2222-0000-0000-0000-000000000022',
+      recordLines(
+        { type: 'user', cwd: worktree, timestamp: TIMESTAMP },
+        { type: 'ai-title', aiTitle: 'First generation' },
+        { type: 'ai-title', aiTitle: 'Second generation' }
+      )
+    )
+
+    await expect(listOne(home, worktree)).resolves.toMatchObject({
+      title: 'Second generation',
+      titleSource: 'aiTitle'
+    })
+  })
+
+  it('derives the title from the first real user message when no titles exist', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'cccc2222-0000-0000-0000-000000000023',
+      recordLines(
+        {
+          type: 'user',
+          isMeta: true,
+          cwd: worktree,
+          timestamp: TIMESTAMP,
+          message: { role: 'user', content: '<local-command-caveat>Caveat…' }
+        },
+        { type: 'user', message: { role: 'user', content: 'fix the login bug' } }
+      )
+    )
+
+    await expect(listOne(home, worktree)).resolves.toMatchObject({
+      title: 'fix the login bug',
+      titleSource: 'firstMessage'
+    })
+  })
+
+  it('falls back to timestamp + short id when no tier yields a title', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'dddd2222-0000-0000-0000-000000000024',
+      recordLines({ type: 'user', cwd: worktree, timestamp: TIMESTAMP })
+    )
+
+    const session = await listOne(home, worktree)
+    expect(session.titleSource).toBe('fallback')
+    expect(session.title).toContain('dddd2222')
+  })
+
+  it('caps every derived title at 81 chars — no full body escapes (NFR-8)', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'eeee2222-0000-0000-0000-000000000025',
+      recordLines({
+        type: 'user',
+        cwd: worktree,
+        timestamp: TIMESTAMP,
+        message: { role: 'user', content: 'b'.repeat(10_000) }
+      })
+    )
+
+    const session = await listOne(home, worktree)
+    expect(session.title.length).toBeLessThanOrEqual(81)
+    expect(session.titleSource).toBe('firstMessage')
   })
 })
 
