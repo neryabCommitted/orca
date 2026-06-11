@@ -59,6 +59,10 @@ function makeFakeStore(initial: { enabled: boolean; repos?: Repo[] }) {
       for (const listener of listeners) {
         listener(updates, settings)
       }
+    },
+    // Mirrors a main-side updateSettings call without notifyListeners.
+    silentlySetSettings(updates: Partial<GlobalSettings>) {
+      settings = { ...settings, ...updates }
     }
   }
 }
@@ -265,6 +269,40 @@ describe('SessionHistoryService change detection and poll', () => {
       expect.any(Error)
     )
   })
+
+  it('throttles sequential list() calls while the provider keeps failing', async () => {
+    const { store } = makeFakeStore({ enabled: true })
+    const provider = makeFakeProvider()
+    provider.listSessions.mockRejectedValue(new Error('scan boom'))
+    vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const service = makeService(store, provider)
+
+    await expect(service.list()).resolves.toEqual([])
+    await expect(service.list()).resolves.toEqual([])
+    await expect(service.list()).resolves.toEqual([])
+    // A failed scan still counts as an attempt — no scan-per-request storm.
+    expect(provider.listSessions).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(SESSION_HISTORY_POLL_INTERVAL_MS + 1_000)
+    await expect(service.list()).resolves.toEqual([])
+    expect(provider.listSessions).toHaveBeenCalledTimes(2)
+  })
+
+  it('performs zero filesystem work on poll ticks after a silent (non-notifying) disable', async () => {
+    const fake = makeFakeStore({ enabled: true })
+    const provider = makeFakeProvider([makeMeta('a')])
+    const service = makeService(fake.store, provider)
+    service.start()
+
+    await vi.advanceTimersByTimeAsync(SESSION_HISTORY_POLL_INTERVAL_MS)
+    expect(provider.listSessions).toHaveBeenCalledTimes(1)
+
+    // A main-side updateSettings without notifyListeners never reaches the
+    // flip handler — the gate must still hold at scan entry (AC-1).
+    fake.silentlySetSettings({ sessionHistoryEnabled: false })
+    await vi.advanceTimersByTimeAsync(SESSION_HISTORY_POLL_INTERVAL_MS * 3)
+    expect(provider.listSessions).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('SessionHistoryService enable/disable flips', () => {
@@ -331,6 +369,57 @@ describe('SessionHistoryService enable/disable flips', () => {
     fake.applySettings({ sessionHistoryEnabled: true })
     await vi.advanceTimersByTimeAsync(0)
     await expect(service.list()).resolves.toEqual([makeMeta('b')])
+  })
+
+  it('does not resurrect a pre-disable in-flight scan after a rapid re-enable', async () => {
+    const fake = makeFakeStore({ enabled: true })
+    const provider = makeFakeProvider()
+    let resolveScan: (value: SessionMeta[]) => void = () => {}
+    provider.listSessions.mockImplementationOnce(
+      () =>
+        new Promise<SessionMeta[]>((resolve) => {
+          resolveScan = resolve
+        })
+    )
+    const service = makeService(fake.store, provider)
+    service.start()
+
+    const inFlight = service.list()
+    fake.applySettings({ sessionHistoryEnabled: false })
+    provider.result = [makeMeta('b')]
+    // Re-enable while the pre-disable scan is still in flight, then let the
+    // stale result resolve — it must not be cached or served as fresh.
+    fake.applySettings({ sessionHistoryEnabled: true })
+    resolveScan([makeMeta('a')])
+    await expect(inFlight).resolves.toEqual([])
+
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(service.list()).resolves.toEqual([makeMeta('b')])
+  })
+
+  it('ignores settings writes that do not change the enabled value', async () => {
+    const fake = makeFakeStore({ enabled: true })
+    const provider = makeFakeProvider([makeMeta('a')])
+    const service = makeService(fake.store, provider)
+    const listener = vi.fn()
+    service.onChanged(listener)
+    service.start()
+
+    await service.list()
+    expect(provider.listSessions).toHaveBeenCalledTimes(1)
+
+    // Re-saving true while already enabled: no rescan, no broadcast.
+    fake.applySettings({ sessionHistoryEnabled: true })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(provider.listSessions).toHaveBeenCalledTimes(1)
+    expect(listener).not.toHaveBeenCalled()
+
+    fake.applySettings({ sessionHistoryEnabled: false })
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    // Re-saving false while already disabled: no broadcast.
+    fake.applySettings({ sessionHistoryEnabled: false })
+    expect(listener).toHaveBeenCalledTimes(1)
   })
 
   it('start() is idempotent and stop() unsubscribes', async () => {

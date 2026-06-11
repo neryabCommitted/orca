@@ -3650,6 +3650,11 @@ export class Store {
           ? Math.min(50, Math.max(1, Math.round(raw)))
           : 5
     }
+    if ('sessionHistoryEnabled' in updates) {
+      // Why: the service gates on === true; only an explicit true may enable
+      // the opt-in scan, so truthy non-booleans never persist a half-on state.
+      sanitizedUpdates.sessionHistoryEnabled = updates.sessionHistoryEnabled === true
+    }
     if ('appIcon' in updates) {
       sanitizedUpdates.appIcon = normalizeAppIconId(updates.appIcon)
     }

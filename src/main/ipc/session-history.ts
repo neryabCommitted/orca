@@ -10,8 +10,14 @@ export function registerSessionHistoryHandlers(sessionHistory: SessionHistorySer
   // sessionHistory:list, so a stale push can never deliver stale data.
   sessionHistory.onChanged(() => {
     for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
+      if (window.isDestroyed() || window.webContents.isDestroyed()) {
+        continue
+      }
+      try {
         window.webContents.send('sessionHistory:changed')
+      } catch (error) {
+        // Why: a window torn down mid-iteration must not starve the rest.
+        console.debug('[session-history] changed broadcast failed:', error)
       }
     }
   })

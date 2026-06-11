@@ -24,7 +24,13 @@ export class SessionHistoryService {
   private readonly changedListeners = new Set<() => void>()
   private cachedResult: SessionMeta[] | null = null
   private lastFingerprint: string | null = null
-  private lastScanCompletedAt = 0
+  // Why: stamped on failure too — a persistently failing provider must be
+  // retried on the poll cadence, not once per renderer list() call.
+  private lastScanSettledAt = 0
+  // Why: bumped on disable flips so an in-flight scan started before the flip
+  // can never cache its (stale-scoped) result, even after a rapid re-enable.
+  private scanEpoch = 0
+  private lastKnownEnabled = false
   private scanPromise: Promise<SessionMeta[]> | null = null
   private pollTimer: NodeJS.Timeout | null = null
   private unsubscribeSettings: (() => void) | null = null
@@ -45,8 +51,8 @@ export class SessionHistoryService {
     if (!this.isEnabled()) {
       return []
     }
-    if (this.cachedResult && Date.now() - this.lastScanCompletedAt < this.pollIntervalMs) {
-      return this.cachedResult
+    if (Date.now() - this.lastScanSettledAt < this.pollIntervalMs) {
+      return this.cachedResult ?? []
     }
     return this.scan()
   }
@@ -62,21 +68,30 @@ export class SessionHistoryService {
     if (this.unsubscribeSettings) {
       return
     }
+    this.lastKnownEnabled = this.isEnabled()
     // Why: only flips arriving with notifyListeners (the settings:set IPC
     // path) reach this — exactly the path the 1.5 Settings toggle uses.
     this.unsubscribeSettings = this.store.onSettingsChanged((updates) => {
       if (!('sessionHistoryEnabled' in updates)) {
         return
       }
-      if (updates.sessionHistoryEnabled === true) {
+      // Why: act on value changes only — a re-save of the same value must not
+      // trigger a rescan or a broadcast storm across windows.
+      const enabled = updates.sessionHistoryEnabled === true
+      if (enabled === this.lastKnownEnabled) {
+        return
+      }
+      this.lastKnownEnabled = enabled
+      if (enabled) {
         this.startPolling()
         // Flip-on emits once after the scan so an open UI refetches fresh data.
         void this.scan().then(() => this.notifyChanged())
       } else {
         this.stopPolling()
+        this.scanEpoch += 1
         this.cachedResult = null
         this.lastFingerprint = null
-        this.lastScanCompletedAt = 0
+        this.lastScanSettledAt = 0
         // Flip-off emits so an open UI refetches and empties.
         this.notifyChanged()
       }
@@ -116,9 +131,15 @@ export class SessionHistoryService {
   // Single-flight: concurrent list()/poll ticks share one in-flight scan
   // (ClaudeUsageStore.runScan precedent).
   private scan(): Promise<SessionMeta[]> {
+    // Why: AC-1 — gate re-checked at every entry so poll ticks do zero
+    // filesystem work even when a non-notifying settings write disabled us.
+    if (!this.isEnabled()) {
+      return Promise.resolve([])
+    }
     if (this.scanPromise) {
       return this.scanPromise
     }
+    const epoch = this.scanEpoch
     this.scanPromise = (async () => {
       try {
         const repos = this.store.getRepos()
@@ -129,16 +150,16 @@ export class SessionHistoryService {
           this.store.getSettings()
         )
         const result = await this.provider.listSessions(scope)
-        // Why: gate re-checked at completion — a disable flip mid-flight must
-        // not resurrect results the flip handler already cleared.
-        if (!this.isEnabled()) {
+        // Why: gate re-checked at completion — a disable flip mid-flight (even
+        // one followed by a rapid re-enable) must not resurrect cleared results.
+        if (!this.isEnabled() || epoch !== this.scanEpoch) {
           return []
         }
         const fingerprint = fingerprintSessions(result)
         const changed = this.lastFingerprint !== null && fingerprint !== this.lastFingerprint
         this.cachedResult = result
         this.lastFingerprint = fingerprint
-        this.lastScanCompletedAt = Date.now()
+        this.lastScanSettledAt = Date.now()
         if (changed) {
           this.notifyChanged()
         }
@@ -147,6 +168,7 @@ export class SessionHistoryService {
         // Why: quiet non-fatal breadcrumb (UX-DR6, 1.2-deferred diagnostic) —
         // state stays at last-good, never a throw, never UI surface.
         console.debug('[session-history] scan failed:', error)
+        this.lastScanSettledAt = Date.now()
         return this.cachedResult ?? []
       } finally {
         this.scanPromise = null

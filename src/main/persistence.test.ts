@@ -3217,6 +3217,22 @@ describe('Store', () => {
     expect(store.updateSettings({ sessionHistoryShownCount: 12 }).sessionHistoryShownCount).toBe(12)
   })
 
+  it('updateSettings normalizes sessionHistoryEnabled to a strict boolean', async () => {
+    const store = await createStore()
+
+    // Only an explicit true enables the opt-in feature: the service gates on
+    // === true, so truthy non-booleans must not persist a half-enabled state.
+    expect(
+      store.updateSettings({ sessionHistoryEnabled: 1 as unknown as boolean }).sessionHistoryEnabled
+    ).toBe(false)
+    expect(
+      store.updateSettings({ sessionHistoryEnabled: 'true' as unknown as boolean })
+        .sessionHistoryEnabled
+    ).toBe(false)
+    expect(store.updateSettings({ sessionHistoryEnabled: true }).sessionHistoryEnabled).toBe(true)
+    expect(store.updateSettings({ sessionHistoryEnabled: false }).sessionHistoryEnabled).toBe(false)
+  })
+
   it('hydrates session history defaults for persisted settings without the new keys', async () => {
     writeDataFile({
       schemaVersion: 1,

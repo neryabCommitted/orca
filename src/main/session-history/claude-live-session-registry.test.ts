@@ -113,6 +113,22 @@ describe('readLiveSessionIds', () => {
     )
   })
 
+  it('never marks live from records with zero, negative, or non-integer pids', async () => {
+    const home = await makeHome()
+    await writeRecord(home, '100.json', JSON.stringify({ pid: 0, sessionId: 'ses-a' }))
+    await writeRecord(home, '200.json', JSON.stringify({ pid: -1, sessionId: 'ses-b' }))
+    await writeRecord(home, '300.json', JSON.stringify({ pid: 1.5, sessionId: 'ses-c' }))
+
+    const { readLiveSessionIds, createLocalClaudeStoreFsAccessor } = await loadModules(home)
+    // The probe must never see these: process.kill(0|-n, 0) signals process
+    // groups and always "succeeds", so a probe call would report them alive.
+    const probe = vi.fn(() => true)
+    await expect(readLiveSessionIds(createLocalClaudeStoreFsAccessor(), probe)).resolves.toEqual(
+      new Set()
+    )
+    expect(probe).not.toHaveBeenCalled()
+  })
+
   it('skips 0-byte records', async () => {
     const home = await makeHome()
     await writeRecord(home, '100.json', '')
@@ -124,7 +140,7 @@ describe('readLiveSessionIds', () => {
     )
   })
 
-  it('skips records that exceed the defensive byte bound', async () => {
+  it('skips records that exceed the oversized-record cap', async () => {
     const home = await makeHome()
     await writeRecord(
       home,
