@@ -4333,7 +4333,12 @@
           "f63ea281e3": "用于 Agent 完成和阻塞状态的螺纹左侧边栏提要。",
           "ca2219fe5e": "显示固定在右下角的小动画宠物。从状态栏宠物菜单中选择一个角色（Claudino、OpenCode、Gremlin）或上传您自己的 PNG、APNG、GIF、WebP、JPG 或 SVG。随时从同一菜单隐藏它，而不禁用此设置。",
           "dd6f0a1d45": "宠物",
-          "0e89a574ae": "右下角漂浮的动画宠物。"
+          "0e89a574ae": "右下角漂浮的动画宠物。",
+          "06daa10f00": "Claude Code session history",
+          "db32b656d5": "List past Claude Code sessions under each project in the sidebar.",
+          "cbb6b6af1c": "Lists past Claude Code sessions under each project in the sidebar. Reads Claude Code's local session store (~/.claude) read-only. Off by default.",
+          "ec5b2ca8a6": "Sessions shown per project",
+          "3eff539b9b": "How many past sessions show before “Show more”. 1–50."
         },
         "FloatingWorkspacePane": {
           "aeaf76fda9": "状态栏",
@@ -6291,7 +6296,9 @@
             "b54cea709b": "伙伴",
             "051203d37c": "宠物",
             "6b5a56ac35": "右下角漂浮的动画宠物。",
-            "87d99e634b": "宠物"
+            "87d99e634b": "宠物",
+            "e4f3ddb34f": "Claude Code session history",
+            "ee6d42956a": "List past Claude Code sessions under each project in the sidebar."
           }
         },
         "floating": {

@@ -4333,7 +4333,12 @@
           "f63ea281e3": "agent 완료 및 차단 상태에 대한 스레드 왼쪽 사이드바 피드입니다.",
           "ca2219fe5e": "오른쪽 하단에 고정된 작은 애니메이션 애완동물을 표시합니다. 캐릭터(Claudino, OpenCode, Gremlin)를 선택하거나 상태 표시줄 애완동물 메뉴에서 자신만의 PNG, APNG, GIF, WebP, JPG 또는 SVG를 업로드하세요. 이 설정을 비활성화하지 않고 동일한 메뉴에서 언제든지 숨길 수 있습니다.",
           "dd6f0a1d45": "애완 동물",
-          "0e89a574ae": "오른쪽 하단에 떠 있는 애니메이션 애완동물."
+          "0e89a574ae": "오른쪽 하단에 떠 있는 애니메이션 애완동물.",
+          "06daa10f00": "Claude Code session history",
+          "db32b656d5": "List past Claude Code sessions under each project in the sidebar.",
+          "cbb6b6af1c": "Lists past Claude Code sessions under each project in the sidebar. Reads Claude Code's local session store (~/.claude) read-only. Off by default.",
+          "ec5b2ca8a6": "Sessions shown per project",
+          "3eff539b9b": "How many past sessions show before “Show more”. 1–50."
         },
         "FloatingWorkspacePane": {
           "aeaf76fda9": "상태 표시줄",
@@ -6291,7 +6296,9 @@
             "b54cea709b": "친구",
             "051203d37c": "애완 동물",
             "6b5a56ac35": "오른쪽 하단에 떠 있는 애니메이션 애완동물.",
-            "87d99e634b": "애완 동물"
+            "87d99e634b": "애완 동물",
+            "e4f3ddb34f": "Claude Code session history",
+            "ee6d42956a": "List past Claude Code sessions under each project in the sidebar."
           }
         },
         "floating": {

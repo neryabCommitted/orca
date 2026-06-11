@@ -1,4 +1,7 @@
+import { Minus, Plus } from 'lucide-react'
 import type { GlobalSettings } from '../../../../shared/types'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { useAppStore } from '../../store'
 import { SearchableSetting } from './SearchableSetting'
@@ -32,6 +35,9 @@ export function ExperimentalPane({
   ])
   const showWorktreeSymlinks = matchesSettingsSearch(searchQuery, [
     getExperimentalSearchEntry().symlinksOnWorktrees
+  ])
+  const showSessionHistory = matchesSettingsSearch(searchQuery, [
+    getExperimentalSearchEntry().sessionHistory
   ])
 
   return (
@@ -223,6 +229,114 @@ export function ExperimentalPane({
                 }`}
               />
             </button>
+          </div>
+        </SearchableSetting>
+      ) : null}
+
+      {showSessionHistory ? (
+        <SearchableSetting
+          title={translate(
+            'auto.components.settings.ExperimentalPane.06daa10f00',
+            'Claude Code session history'
+          )}
+          description={translate(
+            'auto.components.settings.ExperimentalPane.db32b656d5',
+            'List past Claude Code sessions under each project in the sidebar.'
+          )}
+          keywords={getExperimentalSearchEntry().sessionHistory.keywords}
+          className="space-y-3 py-2"
+          id="experimental-session-history"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 shrink space-y-0.5">
+              <Label>
+                {translate(
+                  'auto.components.settings.ExperimentalPane.06daa10f00',
+                  'Claude Code session history'
+                )}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {translate(
+                  'auto.components.settings.ExperimentalPane.cbb6b6af1c',
+                  "Lists past Claude Code sessions under each project in the sidebar. Reads Claude Code's local session store (~/.claude) read-only. Off by default."
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.sessionHistoryEnabled}
+              onClick={() =>
+                updateSettings({
+                  sessionHistoryEnabled: !settings.sessionHistoryEnabled
+                })
+              }
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors ${
+                settings.sessionHistoryEnabled ? 'bg-foreground' : 'bg-muted-foreground/30'
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-background shadow-sm transition-transform ${
+                  settings.sessionHistoryEnabled ? 'translate-x-4' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 shrink space-y-0.5">
+              <Label>
+                {translate(
+                  'auto.components.settings.ExperimentalPane.ec5b2ca8a6',
+                  'Sessions shown per project'
+                )}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {translate(
+                  'auto.components.settings.ExperimentalPane.3eff539b9b',
+                  'How many past sessions show before “Show more”. 1–50.'
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => {
+                  const next = Math.max(1, settings.sessionHistoryShownCount - 1)
+                  updateSettings({ sessionHistoryShownCount: next })
+                }}
+                disabled={!settings.sessionHistoryEnabled || settings.sessionHistoryShownCount <= 1}
+              >
+                <Minus className="size-3" />
+              </Button>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={settings.sessionHistoryShownCount}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10)
+                  if (!Number.isNaN(value) && value >= 1 && value <= 50) {
+                    updateSettings({ sessionHistoryShownCount: value })
+                  }
+                }}
+                disabled={!settings.sessionHistoryEnabled}
+                className="w-14 text-center tabular-nums"
+              />
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => {
+                  const next = Math.min(50, settings.sessionHistoryShownCount + 1)
+                  updateSettings({ sessionHistoryShownCount: next })
+                }}
+                disabled={
+                  !settings.sessionHistoryEnabled || settings.sessionHistoryShownCount >= 50
+                }
+              >
+                <Plus className="size-3" />
+              </Button>
+            </div>
           </div>
         </SearchableSetting>
       ) : null}

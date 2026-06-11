@@ -4333,7 +4333,12 @@
           "f63ea281e3": "agent の完了とブロック状態を示すスレッド化された左側のサイドバー フィード。",
           "ca2219fe5e": "右下隅に固定された小さなアニメーションのペットを表示します。キャラクター (Claudino、OpenCode、Gremlin) を選択するか、ステータス バーのペット メニューから独自の PNG、APNG、GIF、WebP、JPG、または SVG をアップロードします。この設定を無効にしなくても、同じメニューからいつでも非表示にできます。",
           "dd6f0a1d45": "ペット",
-          "0e89a574ae": "右下隅に浮かぶアニメーションのペット。"
+          "0e89a574ae": "右下隅に浮かぶアニメーションのペット。",
+          "06daa10f00": "Claude Code session history",
+          "db32b656d5": "List past Claude Code sessions under each project in the sidebar.",
+          "cbb6b6af1c": "Lists past Claude Code sessions under each project in the sidebar. Reads Claude Code's local session store (~/.claude) read-only. Off by default.",
+          "ec5b2ca8a6": "Sessions shown per project",
+          "3eff539b9b": "How many past sessions show before “Show more”. 1–50."
         },
         "FloatingWorkspacePane": {
           "aeaf76fda9": "ステータスバー",
@@ -6327,7 +6332,9 @@
             "b54cea709b": "相棒",
             "051203d37c": "ペット",
             "6b5a56ac35": "右下隅に浮かぶアニメーションのペット。",
-            "87d99e634b": "ペット"
+            "87d99e634b": "ペット",
+            "e4f3ddb34f": "Claude Code session history",
+            "ee6d42956a": "List past Claude Code sessions under each project in the sidebar."
           }
         },
         "floating": {

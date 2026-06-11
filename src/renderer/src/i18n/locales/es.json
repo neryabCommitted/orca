@@ -4348,7 +4348,12 @@
           "f63ea281e3": "Feed integrado en la barra lateral izquierda para completar agentes y estados de bloqueo.",
           "ca2219fe5e": "Muestra una pequeña mascota animada fijada en la esquina inferior derecha. Elige un personaje (Claudino, OpenCode, Gremlin) o carga tu propio PNG, APNG, GIF, WebP, JPG o SVG desde el menú de mascotas de la barra de estado. Ocultarlo en cualquier momento desde el mismo menú sin desactivar esta configuración.",
           "dd6f0a1d45": "Mascota",
-          "0e89a574ae": "Mascota animada flotante en la esquina inferior derecha."
+          "0e89a574ae": "Mascota animada flotante en la esquina inferior derecha.",
+          "06daa10f00": "Claude Code session history",
+          "db32b656d5": "List past Claude Code sessions under each project in the sidebar.",
+          "cbb6b6af1c": "Lists past Claude Code sessions under each project in the sidebar. Reads Claude Code's local session store (~/.claude) read-only. Off by default.",
+          "ec5b2ca8a6": "Sessions shown per project",
+          "3eff539b9b": "How many past sessions show before “Show more”. 1–50."
         },
         "FloatingWorkspacePane": {
           "aeaf76fda9": "Barra de estado",
@@ -6306,7 +6311,9 @@
             "b54cea709b": "compañero",
             "051203d37c": "mascota",
             "6b5a56ac35": "Mascota animada flotante en la esquina inferior derecha.",
-            "87d99e634b": "Mascota"
+            "87d99e634b": "Mascota",
+            "e4f3ddb34f": "Claude Code session history",
+            "ee6d42956a": "List past Claude Code sessions under each project in the sidebar."
           }
         },
         "floating": {

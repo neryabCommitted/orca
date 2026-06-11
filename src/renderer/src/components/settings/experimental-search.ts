@@ -192,6 +192,62 @@ export const getExperimentalPaneSearchEntries = createLocalizedCatalog(
           'node_modules'
         )
       ]
+    },
+    {
+      title: translate(
+        'auto.components.settings.experimental.search.e4f3ddb34f',
+        'Claude Code session history'
+      ),
+      description: translate(
+        'auto.components.settings.experimental.search.ee6d42956a',
+        'List past Claude Code sessions under each project in the sidebar.'
+      ),
+      keywords: [
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.0d24759f14',
+          'experimental'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.32741d6068',
+          'session'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.45965539ad',
+          'sessions'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.6c2e449a2a',
+          'history'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.e91e799150',
+          'session history'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.a4cb8a09f6',
+          'claude'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.b26b061612',
+          'claude code'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.c9a3e875e3',
+          'past sessions'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.fe5688b761',
+          'sidebar'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.14017d30b0',
+          'shown'
+        ),
+        ...translateSearchKeyword(
+          'auto.components.settings.experimental.search.2423798385',
+          'count'
+        )
+      ]
     }
   ]
 )
@@ -218,6 +274,12 @@ export function getExperimentalSearchEntry() {
     ),
     symlinksOnWorktrees: findEntry(
       translate('auto.components.settings.experimental.search.78c2a8dc74', 'Symlinks on worktrees')
+    ),
+    sessionHistory: findEntry(
+      translate(
+        'auto.components.settings.experimental.search.e4f3ddb34f',
+        'Claude Code session history'
+      )
     )
   } as const
 }
