@@ -3813,6 +3813,15 @@
           "create": "Create workspace",
           "sourceProject": "Task Source",
           "chooseSourceProject": "Choose task source"
+        },
+        "SessionHistoryList": {
+          "a7ccb25750": "Past sessions · {{value0}}",
+          "6e31fb3515": "No past sessions yet",
+          "e86ce0aea3": "Show fewer",
+          "3290349e45": "Show {{value0}} more"
+        },
+        "SessionHistoryRow": {
+          "4932f1fca2": "{{value0}} past session"
         }
       },
       "shared": {

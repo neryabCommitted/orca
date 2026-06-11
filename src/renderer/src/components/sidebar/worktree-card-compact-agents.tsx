@@ -17,7 +17,7 @@ import { translate } from '@/i18n/i18n'
 
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]\n]*\]\([^)]+\)/
 
-function formatShortTimeAgo(ts: number, now: number): string {
+export function formatShortTimeAgo(ts: number, now: number): string {
   const delta = now - ts
   if (delta < 60_000) {
     return 'now'

@@ -845,6 +845,18 @@ export function useIpcEvents(): void {
       })
     )
 
+    // Why: no enabled-check here — the main-process service gate returns []
+    // when the feature is off and emits sessionHistory:changed on toggle, so
+    // Settings flips live-update the sidebar through this one subscription.
+    if (window.api.sessionHistory?.onChanged) {
+      unsubs.push(
+        window.api.sessionHistory.onChanged(() => {
+          void useAppStore.getState().fetchSessionHistory()
+        })
+      )
+      void useAppStore.getState().fetchSessionHistory()
+    }
+
     unsubs.push(
       window.api.worktrees.onChanged(async (data: { repoId: string }) => {
         if (isRuntimeEnvironmentActive()) {

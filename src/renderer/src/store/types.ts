@@ -14,6 +14,7 @@ import type { JiraSlice } from './slices/jira'
 import type { EditorSlice } from './slices/editor'
 import type { StatsSlice } from './slices/stats'
 import type { MemorySlice } from './slices/memory'
+import type { SessionHistorySlice } from './slices/session-history'
 import type { WorkspaceSpaceSlice } from './slices/workspace-space'
 import type { ClaudeUsageSlice } from './slices/claude-usage'
 import type { CodexUsageSlice } from './slices/codex-usage'
@@ -45,6 +46,7 @@ export type AppState = RepoSlice &
   EditorSlice &
   StatsSlice &
   MemorySlice &
+  SessionHistorySlice &
   WorkspaceSpaceSlice &
   ClaudeUsageSlice &
   CodexUsageSlice &

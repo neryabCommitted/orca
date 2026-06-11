@@ -23,6 +23,7 @@ import WorktreeContextMenu from './WorktreeContextMenu'
 import { SshDisconnectedDialog } from './SshDisconnectedDialog'
 import { AutoRenameFailedDialog } from './AutoRenameFailedDialog'
 import WorktreeCardAgents from './WorktreeCardAgents'
+import { SessionHistoryList } from './SessionHistoryList'
 import { WorktreeCardStatusSlot } from './WorktreeCardStatusSlot'
 import { cn } from '@/lib/utils'
 import { activateWorktreeFromSidebar } from '@/lib/sidebar-worktree-activation'
@@ -1266,6 +1267,11 @@ const WorktreeCard = React.memo(function WorktreeCard({
             className={hasMetaRow || remoteBranchConflict ? 'mt-0' : '-mt-1'}
           />
         )}
+
+        {/* Why: the repo's past-sessions rollup lives on the main-worktree
+             card (the sidebar has no repo-level body). The component
+             self-gates on setting/data, so no further conditions here. */}
+        {worktree.isMainWorktree && <SessionHistoryList repoId={worktree.repoId} />}
 
         {showLineageChildChip && (
           <div

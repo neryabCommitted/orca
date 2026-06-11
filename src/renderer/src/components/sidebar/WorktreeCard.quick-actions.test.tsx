@@ -70,6 +70,10 @@ vi.mock('./WorktreeCardAgents', () => ({
   default: () => null
 }))
 
+vi.mock('./SessionHistoryList', () => ({
+  SessionHistoryList: () => null
+}))
+
 vi.mock('./SshDisconnectedDialog', () => ({
   SshDisconnectedDialog: () => null
 }))
