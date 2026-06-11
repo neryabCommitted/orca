@@ -3,6 +3,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { realpath } from 'fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SESSION_LABEL_MAX_CHARS } from './claude-transcript-parser'
 import type * as Os from 'os'
 import type {
   SessionHistoryProjectScope,
@@ -124,7 +125,7 @@ describe('ClaudeSessionHistoryProvider.listSessions', () => {
         isLive: false
       })
       expect(session.title.length).toBeGreaterThan(0)
-      expect(session.title.length).toBeLessThanOrEqual(81)
+      expect(session.title.length).toBeLessThanOrEqual(SESSION_LABEL_MAX_CHARS + 1)
       expect(JSON.stringify(session)).not.toContain(SECRET_BODY)
     }
     expect(sessions[0].lastActivity).toBe('2026-06-09T10:00:00.000Z')
@@ -660,7 +661,7 @@ describe('ClaudeSessionHistoryProvider title derivation', () => {
     )
 
     const session = await listOne(home, worktree)
-    expect(session.title.length).toBeLessThanOrEqual(81)
+    expect(session.title.length).toBeLessThanOrEqual(SESSION_LABEL_MAX_CHARS + 1)
     expect(session.titleSource).toBe('firstMessage')
   })
 })

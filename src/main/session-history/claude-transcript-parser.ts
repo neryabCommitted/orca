@@ -34,23 +34,39 @@ function readObjectField(record: unknown, field: string): Record<string, unknown
 }
 
 export function normalizeSessionLabelText(raw: string): string | null {
-  const collapsed = raw.replace(/[\s\p{Cc}]+/gu, ' ').trim()
+  // Why: format chars (Cf — zero-width, bidi overrides) are removed so an
+  // invisible-only title can't win a tier as a blank row, and RLO can't
+  // visually reorder the sidebar label.
+  const collapsed = raw
+    .replace(/\p{Cf}/gu, '')
+    .replace(/[\s\p{Cc}]+/gu, ' ')
+    .trim()
   if (collapsed.length === 0) {
     return null
   }
   if (collapsed.length <= SESSION_LABEL_MAX_CHARS) {
     return collapsed
   }
-  return `${collapsed.slice(0, SESSION_LABEL_MAX_CHARS)}…`
+  let truncated = collapsed.slice(0, SESSION_LABEL_MAX_CHARS)
+  // Why: never cut inside a surrogate pair — a lone high surrogate is
+  // malformed text all the way through the cache and IPC.
+  const lastUnit = truncated.charCodeAt(truncated.length - 1)
+  if (lastUnit >= 0xd800 && lastUnit <= 0xdbff) {
+    truncated = truncated.slice(0, -1)
+  }
+  return `${truncated}…`
 }
 
-// Why: command/caveat records are slash-command plumbing, not something the
-// user typed as a conversation opener (verified on-disk shapes).
-const FIRST_MESSAGE_NOISE_PREFIXES = ['<command-', '<local-command-caveat>']
+// Why: command/caveat/stdout records are slash-command plumbing, not
+// something the user typed as a conversation opener (verified on-disk
+// shapes) — match the whole <local-command-*> family.
+const FIRST_MESSAGE_NOISE_PREFIXES = ['<command-', '<local-command-']
 
 function readUserMessageText(record: unknown): string | null {
   const meta = record as Record<string, unknown>
-  if (meta.isMeta === true || meta.isSidechain === true) {
+  // Why: compaction continuations carry the generic "session is being
+  // continued…" blurb as a first-class user record — never a title.
+  if (meta.isMeta === true || meta.isSidechain === true || meta.isCompactSummary === true) {
     return null
   }
   const message = readObjectField(record, 'message')
@@ -63,8 +79,11 @@ function readUserMessageText(record: unknown): string | null {
     text = content
   } else if (Array.isArray(content)) {
     // Why: image-paste prompts arrive as content arrays — take the first text
-    // part; tool_result-only arrays yield nothing.
-    const part = content.find((p) => readStringField(p, 'type') === 'text')
+    // part with real text; tool_result-only arrays yield nothing.
+    const part = content.find(
+      (p) =>
+        readStringField(p, 'type') === 'text' && (readStringField(p, 'text')?.trim() ?? '') !== ''
+    )
     text = part === undefined ? null : readStringField(part, 'text')
   }
   if (text === null) {

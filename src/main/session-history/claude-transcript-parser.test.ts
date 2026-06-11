@@ -275,6 +275,28 @@ describe('extractSessionFileMetadata title tiers', () => {
     await expect(extractTitles(lines)).resolves.toMatchObject({ aiTitle: null })
   })
 
+  it('captures an ai-title on exactly the last line of the window', async () => {
+    const filler = JSON.stringify({ type: 'mode', mode: 'default' })
+    const lines = [
+      ...Array.from({ length: SESSION_METADATA_SCAN_MAX_LINES - 1 }, () => filler),
+      JSON.stringify({ type: 'ai-title', aiTitle: 'Last in-window line' })
+    ]
+
+    await expect(extractTitles(lines)).resolves.toMatchObject({ aiTitle: 'Last in-window line' })
+  })
+
+  it('captures an ai-title on the line following exactly cap-sized prior bytes', async () => {
+    const wrapper = JSON.stringify({ type: 'mode', padding: '' })
+    const filler = JSON.stringify({
+      type: 'mode',
+      padding: 'x'.repeat(SESSION_METADATA_SCAN_MAX_BYTES - wrapper.length)
+    })
+    expect(Buffer.byteLength(filler, 'utf-8')).toBe(SESSION_METADATA_SCAN_MAX_BYTES)
+    const lines = [filler, JSON.stringify({ type: 'ai-title', aiTitle: 'At the boundary' })]
+
+    await expect(extractTitles(lines)).resolves.toMatchObject({ aiTitle: 'At the boundary' })
+  })
+
   it('skips an empty ai-title record', async () => {
     const lines = [
       JSON.stringify({ type: 'ai-title', aiTitle: 'Kept' }),
@@ -351,6 +373,47 @@ describe('extractSessionFileMetadata title tiers', () => {
     })
   })
 
+  it('skips compact-summary continuation records', async () => {
+    const lines = [
+      JSON.stringify({
+        type: 'user',
+        isCompactSummary: true,
+        message: {
+          role: 'user',
+          content: 'This session is being continued from a previous conversation that ran out…'
+        }
+      }),
+      JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: 'the post-compaction question' }
+      })
+    ]
+
+    await expect(extractTitles(lines)).resolves.toMatchObject({
+      firstUserMessage: 'the post-compaction question'
+    })
+  })
+
+  it('skips every local-command record shape, not only the caveat', async () => {
+    const lines = [
+      JSON.stringify({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: '<local-command-stdout>On branch main</local-command-stdout>'
+        }
+      }),
+      JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: 'typed after the command' }
+      })
+    ]
+
+    await expect(extractTitles(lines)).resolves.toMatchObject({
+      firstUserMessage: 'typed after the command'
+    })
+  })
+
   it('skips sidechain user records', async () => {
     const lines = [
       JSON.stringify({
@@ -419,6 +482,26 @@ describe('extractSessionFileMetadata title tiers', () => {
     })
   })
 
+  it('falls through an empty text part to a later non-empty one', async () => {
+    const lines = [
+      JSON.stringify({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: '' },
+            { type: 'text', text: '  ' },
+            { type: 'text', text: 'the real prompt' }
+          ]
+        }
+      })
+    ]
+
+    await expect(extractTitles(lines)).resolves.toMatchObject({
+      firstUserMessage: 'the real prompt'
+    })
+  })
+
   it('skips user records without a message role of user', async () => {
     const lines = [
       JSON.stringify({ type: 'user', message: { role: 'assistant', content: 'not mine' } }),
@@ -477,6 +560,23 @@ describe('normalizeSessionLabelText', () => {
   it('caps an 81-char string at 80 chars plus an ellipsis', () => {
     const long = 'x'.repeat(SESSION_LABEL_MAX_CHARS + 1)
     expect(normalizeSessionLabelText(long)).toBe(`${'x'.repeat(SESSION_LABEL_MAX_CHARS)}…`)
+  })
+
+  it('never splits a surrogate pair at the truncation boundary', () => {
+    // 79 ASCII chars + an astral emoji: code units 80–81 form the pair.
+    const input = `${'a'.repeat(SESSION_LABEL_MAX_CHARS - 1)}😀 and more`
+    const result = normalizeSessionLabelText(input)
+
+    expect(result).toBe(`${'a'.repeat(SESSION_LABEL_MAX_CHARS - 1)}…`)
+    expect(result).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
+  })
+
+  it('returns null for input that is only invisible format characters', () => {
+    expect(normalizeSessionLabelText('\u200B\uFEFF\u00AD')).toBeNull()
+  })
+
+  it('strips bidi overrides and zero-width characters from titles', () => {
+    expect(normalizeSessionLabelText('fix\u202E the\u200B bug')).toBe('fix the bug')
   })
 })
 
