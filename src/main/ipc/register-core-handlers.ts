@@ -31,6 +31,7 @@ import { registerDeveloperPermissionHandlers } from './developer-permissions'
 import { registerComputerUsePermissionHandlers } from './computer-use-permissions'
 import { setTrustedBrowserRendererWebContentsId, setAgentBrowserBridgeRef } from './browser'
 import { registerSessionHandlers } from './session'
+import { registerSessionHistoryHandlers } from './session-history'
 import { registerSettingsHandlers } from './settings'
 import { registerDiagnosticsHandlers } from './diagnostics'
 import { registerSkillsHandlers } from './skills'
@@ -55,6 +56,7 @@ import { registerClipboardHandlers } from '../window/clipboard-ipc-handlers'
 import type { ClaudeUsageStore } from '../claude-usage/store'
 import type { CodexUsageStore } from '../codex-usage/store'
 import type { OpenCodeUsageStore } from '../opencode-usage/store'
+import type { SessionHistoryService } from '../session-history/session-history-service'
 import type { RateLimitService } from '../rate-limits/service'
 import type { CodexAccountService } from '../codex-accounts/service'
 import type { ClaudeAccountService } from '../claude-accounts/service'
@@ -77,6 +79,7 @@ export function registerCoreHandlers(
   claudeUsage: ClaudeUsageStore,
   codexUsage: CodexUsageStore,
   openCodeUsage: OpenCodeUsageStore,
+  sessionHistory: SessionHistoryService,
   codexAccounts: CodexAccountService,
   claudeAccounts: ClaudeAccountService,
   rateLimits: RateLimitService,
@@ -105,6 +108,7 @@ export function registerCoreHandlers(
   registerClaudeUsageHandlers(claudeUsage)
   registerCodexUsageHandlers(codexUsage)
   registerOpenCodeUsageHandlers(openCodeUsage)
+  registerSessionHistoryHandlers(sessionHistory)
   registerCodexAccountHandlers(codexAccounts)
   registerAgentHookHandlers(runtime)
   registerAgentTrustHandlers()

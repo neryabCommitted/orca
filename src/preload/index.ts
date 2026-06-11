@@ -67,6 +67,7 @@ import type {
   RuntimeMobileMarkdownResponse
 } from '../shared/mobile-markdown-document'
 import type { RateLimitRuntimeTarget, RateLimitState } from '../shared/rate-limit-types'
+import type { SessionMeta } from '../shared/session-history-types'
 import type { WorkspaceSpaceScanProgress } from '../shared/workspace-space-types'
 import type { WorkspacePortAdvertisedUrlChangedEvent } from '../shared/workspace-ports'
 import type { GhAuthDiagnostic } from '../shared/github-auth-types'
@@ -3207,6 +3208,15 @@ const api = {
     getRecentSessions: (args: { scope: string; range: string; limit?: number }): Promise<unknown> =>
       ipcRenderer.invoke('claudeUsage:getRecentSessions', args)
   },
+
+  sessionHistory: {
+    list: (): Promise<SessionMeta[]> => ipcRenderer.invoke('sessionHistory:list'),
+    onChanged: (callback: () => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent) => callback()
+      ipcRenderer.on('sessionHistory:changed', listener)
+      return () => ipcRenderer.removeListener('sessionHistory:changed', listener)
+    }
+  } satisfies PreloadApi['sessionHistory'],
 
   codexUsage: {
     getScanState: (): Promise<unknown> => ipcRenderer.invoke('codexUsage:getScanState'),

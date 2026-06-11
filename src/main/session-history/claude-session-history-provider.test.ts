@@ -544,6 +544,107 @@ describe('ClaudeSessionHistoryProvider.listSessions', () => {
   })
 })
 
+describe('ClaudeSessionHistoryProvider isLive flag', () => {
+  async function writeLiveRecord(home: string, pid: number, sessionId: string): Promise<void> {
+    const dir = join(home, '.claude', 'sessions')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, `${pid}.json`), JSON.stringify({ pid, sessionId }))
+  }
+
+  it('flags a session live when a registry record with a running pid points at it', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'aaaa1111-0000-0000-0000-000000000001',
+      sessionLines(worktree)
+    )
+    await writeLiveRecord(home, process.pid, 'aaaa1111-0000-0000-0000-000000000001')
+
+    const { ClaudeSessionHistoryProvider } = await loadModules(home)
+    const sessions = await new ClaudeSessionHistoryProvider().listSessions(
+      scopeOf({ path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' })
+    )
+
+    // Live sessions stay in the list DTO — the renderer filters in 1.6 (AR-10).
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0].isLive).toBe(true)
+  })
+
+  it('never flags a session live from a dead-pid (stale) record', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'aaaa1111-0000-0000-0000-000000000001',
+      sessionLines(worktree)
+    )
+    await writeLiveRecord(home, 2 ** 30, 'aaaa1111-0000-0000-0000-000000000001')
+
+    const { ClaudeSessionHistoryProvider } = await loadModules(home)
+    const sessions = await new ClaudeSessionHistoryProvider().listSessions(
+      scopeOf({ path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' })
+    )
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0].isLive).toBe(false)
+  })
+
+  it('reports all sessions not-live when ~/.claude/sessions is absent', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'aaaa1111-0000-0000-0000-000000000001',
+      sessionLines(worktree)
+    )
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'bbbb2222-0000-0000-0000-000000000002',
+      sessionLines(worktree)
+    )
+
+    const { ClaudeSessionHistoryProvider } = await loadModules(home)
+    const sessions = await new ClaudeSessionHistoryProvider().listSessions(
+      scopeOf({ path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' })
+    )
+
+    expect(sessions).toHaveLength(2)
+    expect(sessions.every((session) => session.isLive === false)).toBe(true)
+  })
+
+  it('flags only the matching session, leaving siblings not-live', async () => {
+    const home = await makeHome()
+    const worktree = await makeWorktree(home, 'ws', 'app', 'feature')
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'aaaa1111-0000-0000-0000-000000000001',
+      sessionLines(worktree)
+    )
+    await writeSession(
+      home,
+      '-ws-app-feature',
+      'bbbb2222-0000-0000-0000-000000000002',
+      sessionLines(worktree)
+    )
+    await writeLiveRecord(home, process.pid, 'bbbb2222-0000-0000-0000-000000000002')
+
+    const { ClaudeSessionHistoryProvider } = await loadModules(home)
+    const sessions = await new ClaudeSessionHistoryProvider().listSessions(
+      scopeOf({ path: worktree, repoId: 'repo-1', worktreeId: 'wt-1' })
+    )
+
+    const bySessionId = new Map(sessions.map((session) => [session.sessionId, session.isLive]))
+    expect(bySessionId.get('bbbb2222-0000-0000-0000-000000000002')).toBe(true)
+    expect(bySessionId.get('aaaa1111-0000-0000-0000-000000000001')).toBe(false)
+  })
+})
+
 describe('ClaudeSessionHistoryProvider title derivation', () => {
   function recordLines(...records: unknown[]): string {
     return records.map((record) => JSON.stringify(record)).join('\n')

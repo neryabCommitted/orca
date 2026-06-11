@@ -4,6 +4,7 @@ import { readdir } from 'fs/promises'
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 const CLAUDE_TRANSCRIPTS_DIR = join(homedir(), '.claude', 'transcripts')
+const CLAUDE_LIVE_SESSIONS_DIR = join(homedir(), '.claude', 'sessions')
 
 async function walkJsonlFiles(dirPath: string): Promise<string[]> {
   const entries = await readdir(dirPath, { withFileTypes: true })
@@ -36,6 +37,20 @@ function appendDiscoveredFiles(target: string[], source: readonly string[]): voi
 export async function listClaudeProjectSessionFiles(): Promise<string[]> {
   try {
     return (await walkJsonlFiles(CLAUDE_PROJECTS_DIR)).sort()
+  } catch {
+    return []
+  }
+}
+
+// Why: ~/.claude/sessions holds one flat <pid>.json record per running Claude
+// process — only the isLive flag reads it, never session discovery (D10).
+export async function listClaudeLiveSessionRecordFiles(): Promise<string[]> {
+  try {
+    const entries = await readdir(CLAUDE_LIVE_SESSIONS_DIR, { withFileTypes: true })
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .map((entry) => join(CLAUDE_LIVE_SESSIONS_DIR, entry.name))
+      .sort()
   } catch {
     return []
   }

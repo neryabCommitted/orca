@@ -11,6 +11,7 @@ import {
   normalizeComparablePath
 } from '../claude-store/claude-store-paths'
 import { scanFilesInBatches } from '../claude-store/claude-store-scan'
+import { readLiveSessionIds } from './claude-live-session-registry'
 import {
   createLocalClaudeStoreFsAccessor,
   type ClaudeStoreFsAccessor
@@ -68,13 +69,18 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
       return []
     }
 
+    // Why: one registry pass per listing, not per file — liveness is a
+    // point-in-time snapshot and the records are few (one per running PID).
+    const liveIds = await readLiveSessionIds(this.accessor)
+
     const canonicalCwdByPath = new Map<string, string>()
     const bySessionId = new Map<string, SessionMeta>()
     const seenCacheKeys = new Set<string>()
 
     await scanFilesInBatches(
       files,
-      (filePath) => this.readSessionMeta(filePath, lookup, canonicalCwdByPath, seenCacheKeys),
+      (filePath) =>
+        this.readSessionMeta(filePath, lookup, canonicalCwdByPath, seenCacheKeys, liveIds),
       (meta) => {
         if (!meta) {
           return
@@ -111,7 +117,8 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
     filePath: string,
     lookup: Map<string, SessionHistoryScopeRoot>,
     canonicalCwdByPath: Map<string, string>,
-    seenCacheKeys: Set<string>
+    seenCacheKeys: Set<string>,
+    liveIds: ReadonlySet<string>
   ): Promise<SessionMeta | null> {
     try {
       const cacheKey = await canonicalizePath(filePath)
@@ -161,8 +168,7 @@ export class ClaudeSessionHistoryProvider implements SessionHistoryProvider {
         repoId: root.repoId,
         worktreeId: root.worktreeId,
         cwd,
-        // Why: the live-session registry lands in Story 1.4.
-        isLive: false
+        isLive: liveIds.has(sessionId)
       }
     } catch {
       // Why: a file deleted or torn mid-scan (live Claude churn) skips that

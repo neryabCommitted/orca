@@ -86,10 +86,36 @@ describe('createLocalClaudeStoreFsAccessor', () => {
     })
   })
 
+  it('lists live session record files from the flat sessions dir', async () => {
+    const home = await makeHome()
+    const sessionsDir = join(home, '.claude', 'sessions')
+    await mkdir(sessionsDir, { recursive: true })
+    const record = join(sessionsDir, '63250.json')
+    await writeFile(record, '{"pid":63250,"sessionId":"abc"}')
+    await writeFile(join(sessionsDir, 'ignore.jsonl'), '{}')
+
+    const { createLocalClaudeStoreFsAccessor } = await loadAccessor(home)
+    await expect(createLocalClaudeStoreFsAccessor().listLiveSessionFiles()).resolves.toEqual([
+      record
+    ])
+  })
+
+  it('returns an empty live-record list when the sessions dir is missing', async () => {
+    const home = await makeHome()
+
+    const { createLocalClaudeStoreFsAccessor } = await loadAccessor(home)
+    await expect(createLocalClaudeStoreFsAccessor().listLiveSessionFiles()).resolves.toEqual([])
+  })
+
   it('exposes no write capability', async () => {
     const home = await makeHome()
     const { createLocalClaudeStoreFsAccessor } = await loadAccessor(home)
     const accessor = createLocalClaudeStoreFsAccessor()
-    expect(Object.keys(accessor).sort()).toEqual(['listSessionFiles', 'readLines', 'statFile'])
+    expect(Object.keys(accessor).sort()).toEqual([
+      'listLiveSessionFiles',
+      'listSessionFiles',
+      'readLines',
+      'statFile'
+    ])
   })
 })

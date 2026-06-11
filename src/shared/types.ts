@@ -2391,6 +2391,12 @@ export type GlobalSettings = {
    *  configuration surface and edge cases (conflicts with existing paths,
    *  cleanup on worktree delete) are still being worked out. */
   experimentalWorktreeSymlinks: boolean
+  /** Opt-in gate for past-session history. Off by default: the main-process
+   *  service does zero filesystem scanning until the user enables it. */
+  sessionHistoryEnabled: boolean
+  /** How many past sessions the sidebar list shows before "Show more".
+   *  Persisted here (clamped 1–50 at the settings boundary); the 1.6 list consumes it. */
+  sessionHistoryShownCount: number
 
   /** Active non-local runtime environment for client-routed RPC. `null`
    *  preserves the current local desktop behavior. */

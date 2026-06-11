@@ -3204,6 +3204,33 @@ describe('Store', () => {
     expect(store.getSettings().terminalShortcutPolicy).toBe('orca-first')
   })
 
+  it('updateSettings normalizes sessionHistoryShownCount at the storage boundary', async () => {
+    const store = await createStore()
+
+    expect(store.updateSettings({ sessionHistoryShownCount: 0 }).sessionHistoryShownCount).toBe(1)
+    expect(store.updateSettings({ sessionHistoryShownCount: 51 }).sessionHistoryShownCount).toBe(50)
+    expect(store.updateSettings({ sessionHistoryShownCount: 7.6 }).sessionHistoryShownCount).toBe(8)
+    expect(store.updateSettings({ sessionHistoryShownCount: NaN }).sessionHistoryShownCount).toBe(5)
+    expect(
+      store.updateSettings({ sessionHistoryShownCount: Infinity }).sessionHistoryShownCount
+    ).toBe(5)
+    expect(store.updateSettings({ sessionHistoryShownCount: 12 }).sessionHistoryShownCount).toBe(12)
+  })
+
+  it('hydrates session history defaults for persisted settings without the new keys', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: { theme: 'dark' },
+      githubCache: { pr: {}, issue: {} }
+    })
+
+    const store = await createStore()
+    expect(store.getSettings().sessionHistoryEnabled).toBe(false)
+    expect(store.getSettings().sessionHistoryShownCount).toBe(5)
+  })
+
   it('reloads sourceControlViewMode from global settings without touching workspace state', async () => {
     const workspaceSession = {
       activeRepoId: 'r1',

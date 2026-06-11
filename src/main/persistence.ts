@@ -3641,6 +3641,15 @@ export class Store {
         updates.terminalShortcutPolicy
       )
     }
+    if ('sessionHistoryShownCount' in updates) {
+      // Why: AR-8's 1–50 clamp must hold at the storage chokepoint regardless
+      // of which UI or IPC path writes the value.
+      const raw = updates.sessionHistoryShownCount
+      sanitizedUpdates.sessionHistoryShownCount =
+        typeof raw === 'number' && Number.isFinite(raw)
+          ? Math.min(50, Math.max(1, Math.round(raw)))
+          : 5
+    }
     if ('appIcon' in updates) {
       sanitizedUpdates.appIcon = normalizeAppIconId(updates.appIcon)
     }

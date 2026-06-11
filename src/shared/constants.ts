@@ -320,6 +320,10 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     experimentalTerminalAttention: false,
     compactWorktreeCards: false,
     experimentalWorktreeSymlinks: false,
+    // Why: session history is opt-in (FR-11) — no ~/.claude scanning happens
+    // until the user flips it on. 5 matches the sidebar's compact default list.
+    sessionHistoryEnabled: false,
+    sessionHistoryShownCount: 5,
     // Why: local desktop remains the default server until the user explicitly
     // selects a saved runtime environment.
     activeRuntimeEnvironmentId: null,

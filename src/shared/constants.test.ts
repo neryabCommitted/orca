@@ -57,6 +57,12 @@ describe('getDefaultSettings', () => {
     expect(getDefaultSettings('/tmp').compactWorktreeCards).toBe(false)
   })
 
+  it('keeps session history opt-in off by default with a shown count of 5', () => {
+    const settings = getDefaultSettings('/tmp')
+    expect(settings.sessionHistoryEnabled).toBe(false)
+    expect(settings.sessionHistoryShownCount).toBe(5)
+  })
+
   it('defaults agent launch args to yolo mode where the CLI supports it', () => {
     const settings = getDefaultSettings('/tmp')
 

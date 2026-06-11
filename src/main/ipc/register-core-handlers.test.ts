@@ -50,7 +50,8 @@ const {
   registerSkillsHandlersMock,
   registerWorkspaceSpaceHandlersMock,
   registerWorkspacePortHandlersMock,
-  registerEmulatorFrameStreamHandlersMock
+  registerEmulatorFrameStreamHandlersMock,
+  registerSessionHistoryHandlersMock
 } = vi.hoisted(() => ({
   registerCliHandlersMock: vi.fn(),
   registerPreflightHandlersMock: vi.fn(),
@@ -99,7 +100,12 @@ const {
   registerSkillsHandlersMock: vi.fn(),
   registerWorkspaceSpaceHandlersMock: vi.fn(),
   registerWorkspacePortHandlersMock: vi.fn(),
-  registerEmulatorFrameStreamHandlersMock: vi.fn()
+  registerEmulatorFrameStreamHandlersMock: vi.fn(),
+  registerSessionHistoryHandlersMock: vi.fn()
+}))
+
+vi.mock('./session-history', () => ({
+  registerSessionHistoryHandlers: registerSessionHistoryHandlersMock
 }))
 
 vi.mock('./onboarding', () => ({
@@ -339,6 +345,7 @@ describe('registerCoreHandlers', () => {
     registerWorkspaceSpaceHandlersMock.mockReset()
     registerWorkspacePortHandlersMock.mockReset()
     registerEmulatorFrameStreamHandlersMock.mockReset()
+    registerSessionHistoryHandlersMock.mockReset()
   })
 
   it('passes the store through to handler registrars that need it', () => {
@@ -348,6 +355,7 @@ describe('registerCoreHandlers', () => {
     const claudeUsage = { marker: 'claudeUsage' }
     const codexUsage = { marker: 'codexUsage' }
     const openCodeUsage = { marker: 'openCodeUsage' }
+    const sessionHistory = { marker: 'sessionHistory' }
     const codexAccounts = { marker: 'codexAccounts' }
     const claudeAccounts = { marker: 'claudeAccounts' }
     const rateLimits = { marker: 'rateLimits' }
@@ -362,6 +370,7 @@ describe('registerCoreHandlers', () => {
       claudeUsage as never,
       codexUsage as never,
       openCodeUsage as never,
+      sessionHistory as never,
       codexAccounts as never,
       claudeAccounts as never,
       rateLimits as never,
@@ -377,6 +386,7 @@ describe('registerCoreHandlers', () => {
     expect(registerClaudeUsageHandlersMock).toHaveBeenCalledWith(claudeUsage)
     expect(registerCodexUsageHandlersMock).toHaveBeenCalledWith(codexUsage)
     expect(registerOpenCodeUsageHandlersMock).toHaveBeenCalledWith(openCodeUsage)
+    expect(registerSessionHistoryHandlersMock).toHaveBeenCalledWith(sessionHistory)
     expect(registerAppHandlersMock).toHaveBeenCalledWith(store, { onBeforeRelaunch })
     expect(registerCodexAccountHandlersMock).toHaveBeenCalledWith(codexAccounts)
     expect(registerAgentHookHandlersMock).toHaveBeenCalledWith(runtime)
@@ -429,6 +439,7 @@ describe('registerCoreHandlers', () => {
     const claudeUsage2 = { marker: 'claudeUsage2' }
     const codexUsage2 = { marker: 'codexUsage2' }
     const openCodeUsage2 = { marker: 'openCodeUsage2' }
+    const sessionHistory2 = { marker: 'sessionHistory2' }
     const codexAccounts2 = { marker: 'codexAccounts2' }
     const claudeAccounts2 = { marker: 'claudeAccounts2' }
     const rateLimits2 = { marker: 'rateLimits2' }
@@ -440,6 +451,7 @@ describe('registerCoreHandlers', () => {
       claudeUsage2 as never,
       codexUsage2 as never,
       openCodeUsage2 as never,
+      sessionHistory2 as never,
       codexAccounts2 as never,
       claudeAccounts2 as never,
       rateLimits2 as never,
@@ -455,5 +467,7 @@ describe('registerCoreHandlers', () => {
     // Why: ipcMain.handle throws on duplicate channel registration, so the
     // memory handler must not be wired up a second time on reactivation.
     expect(registerMemoryHandlersMock).not.toHaveBeenCalled()
+    // The registrar also calls sessionHistory.start() — the guard keeps it once-only.
+    expect(registerSessionHistoryHandlersMock).not.toHaveBeenCalled()
   })
 })

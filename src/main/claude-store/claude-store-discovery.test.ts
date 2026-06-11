@@ -83,6 +83,41 @@ describe('listClaudeTranscriptFiles', () => {
   })
 })
 
+describe('listClaudeLiveSessionRecordFiles', () => {
+  it('lists only .json records in the flat sessions dir, sorted', async () => {
+    const home = await makeHome()
+    const sessionsDir = join(home, '.claude', 'sessions')
+    await mkdir(sessionsDir, { recursive: true })
+    const b = join(sessionsDir, '63251.json')
+    const a = join(sessionsDir, '63250.json')
+    await writeFile(b, '{}')
+    await writeFile(a, '{}')
+    await writeFile(join(sessionsDir, 'ignore.jsonl'), '{}')
+    await writeFile(join(sessionsDir, 'ignore.txt'), 'x')
+
+    const { listClaudeLiveSessionRecordFiles } = await loadDiscovery(home)
+    await expect(listClaudeLiveSessionRecordFiles()).resolves.toEqual([a, b])
+  })
+
+  it('ignores subdirectories, including .json-named ones', async () => {
+    const home = await makeHome()
+    const sessionsDir = join(home, '.claude', 'sessions')
+    await mkdir(join(sessionsDir, 'nested.json'), { recursive: true })
+    const record = join(sessionsDir, '100.json')
+    await writeFile(record, '{}')
+
+    const { listClaudeLiveSessionRecordFiles } = await loadDiscovery(home)
+    await expect(listClaudeLiveSessionRecordFiles()).resolves.toEqual([record])
+  })
+
+  it('returns an empty array when the sessions dir is missing', async () => {
+    const home = await makeHome()
+
+    const { listClaudeLiveSessionRecordFiles } = await loadDiscovery(home)
+    await expect(listClaudeLiveSessionRecordFiles()).resolves.toEqual([])
+  })
+})
+
 describe('listClaudeProjectSessionFiles', () => {
   it('lists only files under the projects root, excluding transcripts', async () => {
     const home = await makeHome()

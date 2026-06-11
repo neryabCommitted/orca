@@ -187,6 +187,7 @@ import type {
   UpdatePullRequestBySlugArgs,
   UpdateProjectItemFieldArgs
 } from '../shared/github-project-types'
+import type { SessionMeta } from '../shared/session-history-types'
 import type { RichMarkdownContextMenuCommandPayload } from '../shared/rich-markdown-context-menu'
 import type {
   BrowserSetGrabModeArgs,
@@ -583,6 +584,13 @@ export type DiagnosticsUploadPayload = {
 
 export type MemoryApi = {
   getSnapshot: () => Promise<MemorySnapshot>
+}
+
+// Why: exactly { list, onChanged } in Phase 1 — getTranscript is Story 2.1's
+// surface and must not leak into this contract early.
+export type SessionHistoryApi = {
+  list: () => Promise<SessionMeta[]>
+  onChanged: (callback: () => void) => () => void
 }
 
 export type ClaudeUsageApi = {
@@ -1879,6 +1887,7 @@ export type PreloadApi = {
   stats: StatsApi
   memory: MemoryApi
   claudeUsage: ClaudeUsageApi
+  sessionHistory: SessionHistoryApi
   codexUsage: CodexUsageApi
   openCodeUsage: OpenCodeUsageApi
   aiVault: AiVaultApi
